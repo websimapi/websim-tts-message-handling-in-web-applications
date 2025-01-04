@@ -1,0 +1,72 @@
+<html><head><base href="/" /></head><body>Looking at your code, I can identify why messages are being TTS'd twice. The issue is in the message handling flow:
+
+1. Messages are being processed twice due to two separate pathways triggering the TTS:
+
+```javascript
+ws.onmessage = event => {
+  try {
+    const data = JSON.parse(event.data);
+    if (data.type === 'chat') {
+      // First TTS trigger
+      addChatMessage(data.username, data.message);
+      // Second TTS trigger 
+      if (document.getElementById('ttsEnabled').checked) {
+        ttsManager.addToQueue(data.username, data.message, {
+          rate: parseFloat(ttsRateInput.value),
+          volume: parseFloat(ttsVolumeInput.value)
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
+  }
+};
+```
+
+The issue is that `addChatMessage()` function also seems to be triggering TTS on its own, while the websocket message handler is also directly calling `ttsManager.addToQueue()`.
+
+To fix this, you should:
+
+1. Either remove the TTS trigger from `addChatMessage()` function
+2. Or remove the direct TTS trigger from the websocket message handler
+
+Here's the corrected version of the websocket message handler:
+
+```javascript
+ws.onmessage = event => {
+  try {
+    const data = JSON.parse(event.data);
+    if (data.type === 'chat') {
+      // Only add to chat display
+      addChatMessage(data.username, data.message);
+      
+      // Handle TTS in one place only
+      if (document.getElementById('ttsEnabled').checked) {
+        ttsManager.addToQueue(data.username, data.message, {
+          rate: parseFloat(ttsRateInput.value),
+          volume: parseFloat(ttsVolumeInput.value)
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
+  }
+};
+```
+
+Make sure the `addChatMessage()` function only handles the visual display of messages and doesn't trigger TTS:
+
+```javascript
+function addChatMessage(username, message) {
+  const chatContainer = document.getElementById('chatContainer');
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'chat-message';
+  messageDiv.innerHTML = `<span class="username">${username}</span>: ${message}`;
+  chatContainer.appendChild(messageDiv);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  // Remove any TTS triggers from here if they exist
+}
+```
+
+This will ensure each message is only TTS'd once. The key is to have a single, clear pathway for TTS triggering rather than multiple points that could potentially trigger it.<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body></html>
