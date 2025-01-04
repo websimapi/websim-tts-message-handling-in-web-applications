@@ -1,15 +1,14 @@
-<html><head><base href="/" /></head><body>Looking at your code, I can identify why messages are being TTS'd twice. The issue is in the message handling flow:
+<html><head><base href="/" /></head><body>Looking at the code again, I don't see any fix implemented for the double TTS issue. The issue is that there are still two potential ways TTS can be triggered:
 
-1. Messages are being processed twice due to two separate pathways triggering the TTS:
-
+1. In the `ws.onmessage` event handler:
 ```javascript
 ws.onmessage = event => {
   try {
     const data = JSON.parse(event.data);
     if (data.type === 'chat') {
-      // First TTS trigger
+      // First potential TTS trigger point
       addChatMessage(data.username, data.message);
-      // Second TTS trigger 
+      // Second potential TTS trigger point
       if (document.getElementById('ttsEnabled').checked) {
         ttsManager.addToQueue(data.username, data.message, {
           rate: parseFloat(ttsRateInput.value),
@@ -23,40 +22,41 @@ ws.onmessage = event => {
 };
 ```
 
-The issue is that `addChatMessage()` function also seems to be triggering TTS on its own, while the websocket message handler is also directly calling `ttsManager.addToQueue()`.
+To fix this, we need to:
 
-To fix this, you should:
+1. Make sure `addChatMessage()` function ONLY handles visual display
+2. Move ALL TTS handling to one central location
 
-1. Either remove the TTS trigger from `addChatMessage()` function
-2. Or remove the direct TTS trigger from the websocket message handler
-
-Here's the corrected version of the websocket message handler:
+Here's the corrected version:
 
 ```javascript
+// In the websocket message handler
 ws.onmessage = event => {
   try {
     const data = JSON.parse(event.data);
     if (data.type === 'chat') {
-      // Only add to chat display
+      // Only handle visual display here
       addChatMessage(data.username, data.message);
       
-      // Handle TTS in one place only
-      if (document.getElementById('ttsEnabled').checked) {
-        ttsManager.addToQueue(data.username, data.message, {
-          rate: parseFloat(ttsRateInput.value),
-          volume: parseFloat(ttsVolumeInput.value)
-        });
-      }
+      // Handle TTS in one place
+      handleTTS(data.username, data.message);
     }
   } catch (error) {
     console.error('Error handling message:', error);
   }
 };
-```
 
-Make sure the `addChatMessage()` function only handles the visual display of messages and doesn't trigger TTS:
+// New centralized TTS handling function
+function handleTTS(username, message) {
+  if (document.getElementById('ttsEnabled').checked) {
+    ttsManager.addToQueue(username, message, {
+      rate: parseFloat(ttsRateInput.value),
+      volume: parseFloat(ttsVolumeInput.value)
+    });
+  }
+}
 
-```javascript
+// Visual-only message display
 function addChatMessage(username, message) {
   const chatContainer = document.getElementById('chatContainer');
   const messageDiv = document.createElement('div');
@@ -64,9 +64,15 @@ function addChatMessage(username, message) {
   messageDiv.innerHTML = `<span class="username">${username}</span>: ${message}`;
   chatContainer.appendChild(messageDiv);
   chatContainer.scrollTop = chatContainer.scrollHeight;
-  // Remove any TTS triggers from here if they exist
+  // Remove any TTS-related code from here
 }
 ```
 
-This will ensure each message is only TTS'd once. The key is to have a single, clear pathway for TTS triggering rather than multiple points that could potentially trigger it.<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+The key changes are:
+
+1. Split TTS handling into its own dedicated function `handleTTS()`
+2. Ensure `addChatMessage()` only handles visual display
+3. Call these functions separately from the message handler
+
+This ensures that TTS is only triggered once per message and keeps the code more organized with clear separation of concerns. Would you like me to provide the complete updated code with these fixes integrated?<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body></html>
